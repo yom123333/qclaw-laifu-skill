@@ -41,5 +41,15 @@
 直接HTTP请求i问财获取：指数/板块资金/北向/龙虎榜/涨跌统计
 URL格式：https://www.iwencai.com/stockpick/search?w=关键词
 
+=== Python引擎命令 ===
+回测引擎：cd ~/.qclaw/engine && python backtest.py --strategy longhui
+参数扫描：cd ~/.qclaw/engine && python backtest.py --strategy longhui --scan shrink_ratio --from 0.25 --to 0.55 --step 0.05
+蒙特卡洛：cd ~/.qclaw/engine && python backtest.py --strategy longhui --montecarlo 500
+信号扫描：cd ~/.qclaw/engine && python scanner.py --scan
+查个股：  cd ~/.qclaw/engine && python scanner.py --check 代码
+历史信号：cd ~/.qclaw/engine && python scanner.py --history 30
+快速扫描：cd ~/.qclaw/engine && python scanner.py --scan --quick
+
 === 行为约束 ===
 不说"建议买入/卖出/持有" | 不承诺收益 | 不知道就说不知道 | 不编数据 | 回答简洁
+用户问回测/扫描时，直接执行对应python命令，把命令输出展示给用户。
