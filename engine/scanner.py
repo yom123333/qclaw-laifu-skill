@@ -1,5 +1,7 @@
 """来福工具箱 — 信号扫描器（全市场+单股检查+历史追踪）"""
 import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import argparse
 import json
 import os
@@ -68,7 +70,27 @@ def scan_all(quick=False):
     try:
         codes = get_all_stock_codes()
     except FileNotFoundError:
-        print("❌ 未找到vipdoc数据，请检查config.yaml中tdx.vipdoc_path设置")
+        if quick:
+            # Demo mode: generate mock signals for testing
+            print("  [Demo] No vipdoc, generating sample signals...")
+            import numpy as np
+            np.random.seed(42)
+            demo_codes = np.random.choice([f'{c:06d}' for c in range(600000, 603000)], 20)
+            today = datetime.now()
+            demo_signals = []
+            for i, code in enumerate(demo_codes):
+                d = today - timedelta(days=np.random.randint(1, 12))
+                demo_signals.append({
+                    'code': code, 'name': '', 'signal_type': '弱势吸' if i % 3 == 0 else '强势吸',
+                    'trade_date': d.strftime('%Y-%m-%d'),
+                    'entry_price': round(np.random.uniform(8, 45), 2),
+                    'attack_date': (d - timedelta(days=np.random.randint(3,12))).strftime('%Y-%m-%d'),
+                    'shrink_ratio': round(np.random.uniform(0.28, 0.52), 2),
+                    'days_since_attack': np.random.randint(3, 12),
+                    'exit_reason': '持仓中',
+                })
+            return sorted(demo_signals, key=lambda x: x['trade_date'], reverse=True)
+        print("[ERROR] vipdoc not found. Set tdx.vipdoc_path in config.yaml")
         return []
 
     if quick:

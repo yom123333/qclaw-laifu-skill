@@ -1,5 +1,7 @@
 """来福工具箱 — 回测引擎（完整10层过滤+6级出场）"""
 import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import argparse
 import numpy as np
 import pandas as pd
@@ -347,6 +349,7 @@ def main():
     parser.add_argument('--montecarlo', type=int, help='蒙特卡洛模拟次数')
     parser.add_argument('--compare', action='store_true', help='对比两个策略')
     parser.add_argument('--quick', action='store_true', help='快速模式（仅100只股票）')
+    parser.add_argument('--fast', action='store_true', help='极速测试（10只股票，演示回测流程）')
     args = parser.parse_args()
 
     cfg = load_config()
@@ -355,19 +358,45 @@ def main():
     end = bt.get('end_date', '2025-12-31')
 
     print("=" * 50)
-    print("  来福回测引擎")
+    print("  Laifu Backtest Engine")
     print("=" * 50)
 
     # Load codes
     if args.codes:
         codes = args.codes.split(',')
+    elif args.fast:
+        # Super fast: 10 stocks, 3 years, demo data
+        print("  Demo mode: 10 stocks x 3 years")
+        dates = pd.date_range('2022-01-01', '2024-12-31', freq='B')
+        demo_codes = [f'{c:06d}' for c in range(600000, 600010)]
+        records = []
+        np.random.seed(42)
+        for c in demo_codes:
+            p = np.random.uniform(8, 30)
+            for d in dates:
+                r = np.random.normal(0.0005, 0.018)
+                p *= (1 + r)
+                p = max(p, 3)
+                vol = np.random.uniform(500000, 5000000)
+                # Occasionally create an attack day (up >9.5% with high vol)
+                is_attack = np.random.random() < 0.02
+                chg = 0.098 + np.random.random() * 0.005 if is_attack else r
+                close = p * (1 + chg) if is_attack else p
+                records.append({
+                    'code': c, 'date': d,
+                    'open': p, 'high': p*1.03, 'low': p*0.97, 'close': close,
+                    'amount': close*vol, 'volume': vol * (3 if is_attack else 1),
+                })
+                p = close
+        data = pd.DataFrame(records)
+        print(f"  {len(demo_codes)} stocks x {len(dates)} days = {len(records)} records")
     else:
         try:
             all_codes = get_all_stock_codes()
             codes = all_codes[:100] if args.quick else all_codes
             print(f"  全市场股票: {len(all_codes)}只 | 回测用: {len(codes)}只")
         except FileNotFoundError:
-            print("  ⚠️ 未找到vipdoc数据，使用演示模式")
+            print("  [WARN] vipdoc not found, using demo mode")
             # Generate demo data
             dates = pd.date_range(start, end, freq='B')
             demo_codes = [f'{c:06d}' for c in range(600000, 600100)]
