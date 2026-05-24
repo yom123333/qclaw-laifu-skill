@@ -1,4 +1,7 @@
 """来福工具箱 — 数据读取 & 配置管理"""
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import os
 import struct
 import yaml

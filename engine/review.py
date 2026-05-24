@@ -1,5 +1,7 @@
 """来福工具箱 — 复盘生成器（数据驱动，极简token）"""
 import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import os
 import json
 import argparse
