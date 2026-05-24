@@ -1,7 +1,6 @@
 """来福工具箱 — 盘中出场监控（6级规则实时检查）"""
 import sys
-import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdout.reconfigure(encoding='utf-8')
 import os
 import json
 import argparse

@@ -1,7 +1,6 @@
 """来福工具箱 — 回测引擎（完整10层过滤+6级出场）"""
 import sys
-import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdout.reconfigure(encoding='utf-8')
 import argparse
 import numpy as np
 import pandas as pd
