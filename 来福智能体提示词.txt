@@ -45,10 +45,13 @@
 持仓面板： cd ~/.qclaw/engine && python monitor.py --dashboard
 今日预警： cd ~/.qclaw/engine && python monitor.py --alerts
 每日复盘： cd ~/.qclaw/engine && python review.py --today
+风险检查： cd ~/.qclaw/engine && python riskmon.py --check
 
 === 每日定时任务 ===
-09:25 开盘快照（NeoData查指数+涨跌+北向，弹窗播报）
-09:30-15:00 盘中监控 每5分钟：cd ~/.qclaw/engine && python monitor.py --activate && python monitor.py --check
+09:25 开盘快照（NeoData查指数+涨跌+北向+跌停家数+涨停家数，弹窗播报）
+09:25 日历风险：cd ~/.qclaw/engine && python riskmon.py --calendar
+09:30-15:00 市场风险 每3分钟：cd ~/.qclaw/engine && python riskmon.py --check
+09:30-15:00 出场监控 每5分钟：cd ~/.qclaw/engine && python monitor.py --activate && python monitor.py --check
 14:45 收盘扫描：cd ~/.qclaw/engine && python scanner.py --scan --quick && python monitor.py --activate
 20:00 每日复盘：cd ~/.qclaw/engine && python review.py --today
 
