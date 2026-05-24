@@ -274,15 +274,67 @@ def run_all_checks():
     return all_alerts
 
 
+def check_premarket():
+    """盘前简报：隔夜美股+今日日历+预期"""
+    now = datetime.now()
+    cal = check_calendar_risks()
+    weekday = ['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]
+
+    print(f"╔══════════════════════════════════════╗")
+    print(f"║  来福 · 盘前简报                      ║")
+    print(f"║  {now.strftime('%Y-%m-%d')} {weekday}                        ║")
+    print(f"╚══════════════════════════════════════╝")
+
+    # Calendar
+    if cal:
+        print(f"\n📅 今日日历风险:")
+        for c in cal:
+            print(f"  [{c['level']}] {c['type']}")
+            print(f"  建议: {c['action']}")
+    else:
+        print(f"\n📅 今日无特殊日历事件")
+
+    # Try to get overnight US market
+    print(f"\n🌍 隔夜外盘（请用NeoData补充）:")
+    print(f"  需检查: 美股三大指数涨跌 / A50期货 / 人民币汇率 / VIX")
+
+    # Today's expectation
+    print(f"\n📋 今日关注:")
+    print(f"  1. 昨日涨停家数+封板率 → 判断今日追涨情绪")
+    print(f"  2. 北向资金昨日方向 → 连续流出需警惕")
+    print(f"  3. 昨日成交额 → 缩量环境降低预期")
+    print(f"  4. 持仓中信号 → 检查是否有临近出场的（浮亏>5%或持>15天）")
+
+    # Check positions near exit
+    positions_file = os.path.join(ENGINE_DIR, '..', 'positions.json')
+    if os.path.exists(positions_file):
+        with open(positions_file, 'r', encoding='utf-8') as f:
+            positions = json.load(f)
+        active = [p for p in positions if p['status'] == 'active']
+        if active:
+            risky = [p for p in active if p.get('hold_days', 0) > 12]
+            print(f"\n⚠️ 持仓提醒:")
+            print(f"  活跃持仓: {len(active)}个")
+            if risky:
+                print(f"  持仓超12天: {len(risky)}个 → 关注是否接近破高量出场")
+
+    print(f"\n[QClaw: 请用NeoData补充隔夜美股+今日预期具体数据]")
+
+
 def main():
     parser = argparse.ArgumentParser(description='来福市场风险哨兵')
     parser.add_argument('--check', action='store_true', help='运行一次风险检查')
     parser.add_argument('--calendar', action='store_true', help='仅检查日历风险')
+    parser.add_argument('--premarket', action='store_true', help='盘前简报')
     parser.add_argument('--daemon', type=int, help='持续监控（每N秒）')
     args = parser.parse_args()
 
-    if args.check or (not args.calendar and not args.daemon):
+    if args.check or (not args.calendar and not args.daemon and not args.premarket):
         run_all_checks()
+
+    if args.premarket:
+        check_premarket()
+        return
 
     if args.calendar:
         risks = check_calendar_risks()

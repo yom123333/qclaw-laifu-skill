@@ -131,6 +131,79 @@ def _get_summary(market_data, signal_stats):
     return "市场数据待获取"
 
 
+def generate_personal_diary(today=None):
+    """策略日记：今日个人持仓出入+盈亏总结"""
+    if today is None:
+        today = datetime.now()
+
+    # Read positions
+    positions_file = os.path.join(ENGINE_DIR, '..', 'positions.json')
+    positions = []
+    if os.path.exists(positions_file):
+        with open(positions_file, 'r', encoding='utf-8') as f:
+            positions = json.load(f)
+
+    today_str = today.strftime('%Y-%m-%d')
+    weekdays = ['周一','周二','周三','周四','周五','周六','周日']
+
+    # Today's entries
+    today_entries = [p for p in positions if p.get('entry_date') == today_str]
+    today_exits = [p for p in positions if p.get('exit_date') == today_str]
+    active = [p for p in positions if p['status'] == 'active']
+    all_closed = [p for p in positions if p['status'] == 'closed']
+
+    diary = f"""┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  来福 · 策略日记                    ┃
+┃  {today.strftime('%Y年%m月%d日')} {weekdays[today.weekday()]}                     ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+📥 今日新入场: {len(today_entries)}个"""
+    if today_entries:
+        for p in today_entries:
+            diary += f"\n  · {p['code']} {p.get('signal_type','')} ¥{p['entry_price']:.2f}"
+
+    diary += f"\n\n📤 今日出场: {len(today_exits)}个"
+    if today_exits:
+        today_pnl = 0
+        for p in today_exits:
+            pnl = p['exit_price'] / p['entry_price'] - 1
+            today_pnl += pnl
+            diary += f"\n  · {p['code']} {p.get('exit_reason','')} | {pnl:+.1%} | 持{p.get('hold_days',0)}天"
+        diary += f"\n  今日合计: {today_pnl:+.1%}"
+
+    diary += f"\n\n📊 当前持仓: {len(active)}个"
+    if active:
+        total_pnl = 0
+        for p in active:
+            pnl = (p['highest_close'] / p['entry_price'] - 1)
+            total_pnl += pnl
+            diary += f"\n  {'🟢' if pnl>0 else '🔴'} {p['code']} {p.get('signal_type','')} | {pnl:+.1%} | D+{p.get('hold_days',0)}"
+        diary += f"\n  总浮{'盈' if total_pnl>=0 else '亏'}: {total_pnl:+.1%}"
+
+    # All-time stats
+    if all_closed:
+        all_returns = [p['exit_price']/p['entry_price']-1 for p in all_closed]
+        wins = sum(1 for r in all_returns if r > 0)
+        diary += f"""
+
+📈 累计统计({len(all_closed)}笔):
+  胜率: {wins/len(all_closed):.1%}
+  均收益: {sum(all_returns)/len(all_closed):+.1%}
+  总盈亏: {sum(all_returns):+.1%}"""
+
+    diary += f"""
+
+[QClaw: 请基于以上持仓数据+NeoData市场环境，给出今日策略总结和明日关注点]"""
+
+    # Save
+    os.makedirs(REVIEW_DIR, exist_ok=True)
+    filename = os.path.join(REVIEW_DIR, f"{today_str}_策略日记.md")
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(diary)
+
+    return diary, filename
+
+
 def generate(today=None):
     """生成完整复盘报告"""
     if today is None:
@@ -244,6 +317,7 @@ def main():
     parser.add_argument('--date', help='指定日期 YYYY-MM-DD')
     parser.add_argument('--export', choices=['md', 'html'], default='md', help='导出格式')
     parser.add_argument('--summary-only', action='store_true', help='只生成一句话定调')
+    parser.add_argument('--personal', action='store_true', help='生成策略日记（个人持仓出入+盈亏）')
     args = parser.parse_args()
 
     if args.date:
@@ -260,6 +334,12 @@ def main():
         return
     else:
         today = datetime.now()
+
+    if args.personal:
+        review, filename = generate_personal_diary(today)
+        print(review)
+        print(f"\n[已保存: {filename}]")
+        return
 
     review, filename = generate(today)
 
