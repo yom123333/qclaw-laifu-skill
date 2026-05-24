@@ -1,44 +1,28 @@
-# 来福量化策略助手 · QClaw 技能包
+# 来福 · 龙回2号策略助手
 
-龙回2号 + 攻守双驱V1 量化策略智能助手。适用于 QClaw 桌面客户端。
+QClaw 智能体，一键安装。
 
-## 一键安装
+## 安装（30秒）
 
-1. 打开 QClaw
-2. 技能管理 → 从 GitHub 导入
-3. 输入：`[你的GitHub用户名]/qclaw-laifu-skill`
-4. 点击导入，完成
+1. QClaw → 新建智能体 → 名称填"来福" → 模型选 DeepSeek
+2. 打开 `来福智能体提示词.txt` → 全选复制
+3. 粘贴到智能体的"描述/提示词"栏 → 保存
+4. 开始对话
 
 ## 功能
 
-| 能力 | 怎么用 |
-|------|--------|
-| 策略规则查询 | "龙回策略胜率多少" "出场规则是什么" |
-| 行情数据 | "今天大盘怎么样" "AI板块资金" |
-| 信号扫描 | "扫描今天信号"（需要先配Python引擎） |
-| 回测分析 | "跑回测" "参数扫描" |
-| 复盘报告 | "生成今日复盘" |
+- 龙回2号完整策略规则（10层过滤+6级出场）
+- 攻守双驱V1策略
+- 历史回测数据
+- 大盘红绿灯
+- i问财行情查询
 
-## 前置条件（可选）
+## 进阶（可选）
 
-不配置也能用策略知识和行情查询。回测/扫描需要安装 Python 引擎：
+基础版粘贴提示词就能用。如需回测计算和信号扫描，额外安装 Python 引擎：
 
 ```bash
-pip install pandas numpy requests pyyaml openai
+pip install pandas numpy requests pyyaml
 ```
 
-然后修改 `config.yaml` 填入你的 DeepSeek key 和通达信路径。
-
-## 文件结构
-
-```
-qclaw-laifu-skill/
-├── SKILL.md       ← QClaw 技能文件（核心）
-├── README.md      ← 本文件
-├── config.yaml    ← 用户配置模板
-└── engine/        ← Python 策略引擎
-    ├── strategy.py
-    ├── backtest.py
-    ├── scanner.py
-    └── ...
-```
+将 `engine/` 目录复制到 `~/.openclaw/engine/`，修改 `config.yaml` 填入 DeepSeek key 和通达信路径。
