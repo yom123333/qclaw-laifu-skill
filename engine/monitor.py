@@ -14,7 +14,7 @@ ALERTS_FILE = os.path.join(ENGINE_DIR, '..', 'alerts_today.json')
 
 # ─── Exit Rules (same logic as backtest) ───
 def _check_exit(pos, current_price, current_volume=None, avg_volume=None):
-    """检查6级出场规则，返回触发原因或None"""
+    """检查6级出场规则，返回 (触发原因, 详细数值) 或 (None, None)"""
     entry_price = pos['entry_price']
     highest = max(pos.get('highest_close', entry_price), current_price)
     current_return = current_price / entry_price - 1
@@ -22,27 +22,40 @@ def _check_exit(pos, current_price, current_volume=None, avg_volume=None):
     # 更新最高价
     pos['highest_close'] = highest
 
-    # 1. 移动止盈 (ATR approximated as 2% of price)
+    # 1. 移动止盈
     atr = current_price * 0.02
     if current_return > 0:
-        stop = highest * (1 - 2.0 * atr / current_price)
-        if current_price < stop:
-            return "1-移动止盈"
+        stop_price = highest * (1 - 2.0 * atr / current_price)
+        if current_price < stop_price:
+            return (
+                f'1-移动止盈',
+                f'最高¥{highest:.2f} ATR止损¥{stop_price:.2f} 当前¥{current_price:.2f}(跌破) 盈利{current_return:+.1%}'
+            )
 
-    # 2. 硬止损 -8%
+    # 2. 硬止损
     if current_return < -0.08:
-        return "2-硬止损"
+        return (
+            f'2-硬止损',
+            f'入场¥{entry_price:.2f} 当前¥{current_price:.2f} 亏损{current_return:+.1%}>8%'
+        )
 
-    # 3. 放量断板 (if volume data available)
-    if current_volume and avg_volume:
-        if current_volume > avg_volume * 2.0 and current_return < -0.02:
-            return "4-放量断板"
+    # 3. 放量断板
+    if current_volume and avg_volume and avg_volume > 0:
+        vol_ratio = current_volume / avg_volume
+        if vol_ratio > 2.0 and current_return < -0.02:
+            return (
+                f'4-放量断板',
+                f'量比{vol_ratio:.1f}倍 跌幅{current_return:+.1%} 放量下跌'
+            )
 
-    # 4. 破高量结构 (hold >5 days, loss >5%)
+    # 4. 破高量结构
     if pos.get('hold_days', 0) > 5 and current_return < -0.05:
-        return "5-破高量结构"
+        return (
+            f'5-破高量结构',
+            f'持仓{pos["hold_days"]}天 亏损{current_return:+.1%} 跌破关键位'
+        )
 
-    return None
+    return None, None
 
 
 # ─── Data ───
@@ -133,13 +146,14 @@ def check_positions(verbose=True):
         pos['hold_days'] = pos.get('hold_days', 0) + 1
 
         # Check exit
-        exit_reason = _check_exit(pos, current_price)
+        exit_reason, exit_detail = _check_exit(pos, current_price)
 
         if exit_reason:
             pos['status'] = 'closed'
             pos['exit_date'] = datetime.now().strftime('%Y-%m-%d')
             pos['exit_price'] = current_price
             pos['exit_reason'] = exit_reason
+            pos['exit_detail'] = exit_detail
 
             alert = {
                 'time': today,
@@ -150,6 +164,8 @@ def check_positions(verbose=True):
                 'exit_price': current_price,
                 'return_pct': round((current_price / pos['entry_price'] - 1) * 100, 2),
                 'reason': exit_reason,
+                'detail': exit_detail,
+                'hold_days': pos.get('hold_days', 0),
             }
             alerts.append(alert)
             triggered.append(alert)
@@ -168,8 +184,10 @@ def check_positions(verbose=True):
                 print(f"  {status} {pos['code']} | {pos['entry_price']:.2f} | {pnl:+.1f}% | D+{pos['hold_days']}")
 
             for t in triggered:
-                print(f"\nEXIT! {t['code']} {t['reason']}")
-                print(f"  {t['entry_price']} -> {t['exit_price']} | {t['return_pct']:+.1f}%")
+                print(f"\n🚨 出场触发! {t['code']}")
+                print(f"  规则: {t['reason']}")
+                print(f"  {t['detail']}")
+                print(f"  入场¥{t['entry_price']} → 出场¥{t['exit_price']} | {t['return_pct']:+.1f}% | 持{t['hold_days']}天")
 
     return triggered
 

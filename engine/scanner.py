@@ -16,47 +16,60 @@ SIGNAL_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sign
 
 
 def _check_entry(df, idx, attack_idx, params, market_score=60):
-    """10层过滤检查（同回测引擎）"""
+    """10层过滤检查，返回 (pass, details_dict)"""
     row = df.iloc[idx]
     attack_row = df.iloc[attack_idx]
+    details = {}
 
     days = idx - attack_idx
+    details['窗口'] = f'{days}天'
     if days < params.get('time_window_min', 3) or days > params.get('time_window_max', 12):
-        return False
+        return False, {'失败': f'窗口{details["窗口"]}不在{params["time_window_min"]}-{params["time_window_max"]}天'}
 
-    if attack_row['volume'] == 0:
-        return False
-    shrink = row['volume'] / attack_row['volume']
+    shrink = row['volume'] / attack_row['volume'] if attack_row['volume'] > 0 else 0
+    details['缩量'] = f'{shrink:.0%}'
     if shrink < params.get('shrink_ratio_min', 0.25) or shrink > params.get('shrink_ratio_max', 0.55):
-        return False
+        return False, {'失败': f'缩量{shrink:.0%}不在{params["shrink_ratio_min"]:.0%}-{params["shrink_ratio_max"]:.0%}'}
 
     floor = attack_row['close'] * params.get('price_discount', 0.98)
+    details['价格'] = f'¥{row["close"]:.2f}'
     if row['close'] < floor:
-        return False
+        return False, {'失败': f'价格低于底线¥{floor:.2f}'}
 
     if idx < 22:
-        return False
+        return False, {'失败': '数据不足'}
     ma_now = calc_ma(df['close'].iloc[:idx+1], 20).iloc[-1]
     ma_prev = calc_ma(df['close'].iloc[:idx], 20).iloc[-1]
+    details['MA20'] = '↑' if ma_now > ma_prev else '↓'
     if ma_now <= ma_prev:
-        return False
+        return False, {'失败': 'MA20走平或向下'}
 
-    if idx < 4:
-        return False
-    ang = calc_angle(df['close'].iloc[:idx+1], 3)
+    ang = calc_angle(df['close'].iloc[:idx+1], 3) if idx >= 4 else -999
+    details['角度'] = f'{ang:.1f}°'
     if ang < params.get('ang3_min', 0):
-        return False
+        return False, {'失败': f'趋势角{ang:.1f}°<0°'}
+
+    details['偏离'] = f'{(abs(row["close"]-ma_now)/row["close"]):.2%}'
+    # Simplified deviation check
+    if abs(row['close'] - ma_now) / row['close'] > 0.15:
+        return False, {'失败': '偏离度过大'}
 
     recent_low = df['low'].iloc[max(0,idx-10):idx+1].min()
+    details['支撑'] = f'¥{recent_low:.2f}'
     if row['close'] < recent_low * 0.99:
-        return False
+        return False, {'失败': '跌破趋势线支撑'}
 
     daily_chg = row['close'] / df.iloc[idx-1]['close'] - 1
+    details['日跌'] = f'{daily_chg:.1%}'
     if daily_chg < params.get('stop_daily_loss', -0.03):
-        return False
+        return False, {'失败': f'日跌幅{details["日跌"]}超限'}
 
+    details['大盘'] = f'{market_score}分'
     if market_score < params.get('market_green_light', 50):
-        return False
+        return False, {'失败': f'大盘{market_score}分<50'}
+
+    details['攻击日'] = attack_row['date'].strftime('%m-%d')
+    return True, details
 
     return True
 
@@ -79,14 +92,28 @@ def scan_all(quick=False):
             demo_signals = []
             for i, code in enumerate(demo_codes):
                 d = today - timedelta(days=np.random.randint(1, 12))
+                days = np.random.randint(3, 12)
+                shrink = round(np.random.uniform(0.28, 0.52), 2)
+                ang = round(np.random.uniform(0.5, 5.0), 1)
+                dev = round(np.random.uniform(0.02, 0.12), 2)
+                price = round(np.random.uniform(8, 45), 2)
+                ad = d - timedelta(days=days)
                 demo_signals.append({
-                    'code': code, 'name': '', 'signal_type': '弱势吸' if i % 3 == 0 else '强势吸',
+                    'code': code, 'name': '',
+                    'signal_type': '弱势吸' if i % 3 == 0 else '强势吸',
                     'trade_date': d.strftime('%Y-%m-%d'),
-                    'entry_price': round(np.random.uniform(8, 45), 2),
-                    'attack_date': (d - timedelta(days=np.random.randint(3,12))).strftime('%Y-%m-%d'),
-                    'shrink_ratio': round(np.random.uniform(0.28, 0.52), 2),
-                    'days_since_attack': np.random.randint(3, 12),
+                    'entry_price': price,
+                    'attack_date': ad.strftime('%Y-%m-%d'),
+                    'shrink_ratio': shrink,
+                    'days_since_attack': days,
                     'exit_reason': '持仓中',
+                    'filter_details': {
+                        '攻击日': ad.strftime('%m-%d'), '窗口': f'{days}天',
+                        '缩量': f'{shrink:.0%}', '角度': f'{ang:.1f}°',
+                        'MA20': '↑', '偏离': f'{dev:.0%}',
+                        '支撑': f'¥{price*0.94:.2f}', '日跌': f'{np.random.uniform(-0.02,0.01):.1%}',
+                        '大盘': f'{np.random.randint(55,80)}分',
+                    },
                 })
             return sorted(demo_signals, key=lambda x: x['trade_date'], reverse=True)
         print("[ERROR] vipdoc not found. Set tdx.vipdoc_path in config.yaml")
@@ -123,7 +150,8 @@ def scan_all(quick=False):
             if attack_idx is None:
                 continue
 
-            if _check_entry(df, idx, attack_idx, params):
+            passed, check_details = _check_entry(df, idx, attack_idx, params)
+            if passed:
                 row = df.iloc[idx]
                 attack_row = df.iloc[attack_idx]
                 shrink = row['volume'] / attack_row['volume'] if attack_row['volume'] > 0 else 0
@@ -138,6 +166,7 @@ def scan_all(quick=False):
                     'shrink_ratio': round(shrink, 3),
                     'days_since_attack': idx - attack_idx,
                     'exit_reason': '持仓中',
+                    'filter_details': check_details,
                 })
                 break  # One signal per stock
 
@@ -152,9 +181,9 @@ def print_signal_report(signals):
         print("\n📡 今日暂无符合策略条件的信号")
         return
 
-    print(f"\n{'='*50}")
+    print(f"\n{'='*70}")
     print(f"📡 来福信号扫描 · {datetime.now().strftime('%Y-%m-%d')}")
-    print(f"{'='*50}")
+    print(f"{'='*70}")
     print(f"活跃信号: {len(signals)} 个")
 
     types = {}
@@ -171,11 +200,13 @@ def print_signal_report(signals):
         else: shrink_ranges['50-60%'] += 1
     print("缩量: " + " | ".join(f"{k}:{v}" for k, v in shrink_ranges.items() if v > 0))
 
-    print(f"\n{'代码':<8} {'类型':<8} {'入场日':<12} {'入场价':<8} {'缩量比':<8} {'窗口':<6}")
-    print("-" * 52)
-    for s in signals:
-        print(f"{s['code']:<8} {s['signal_type']:<8} {s['trade_date']:<12} "
-              f"¥{s['entry_price']:<7} {s['shrink_ratio']:.0%}{'':<5} {s['days_since_attack']}天")
+    # Detail per signal
+    for i, s in enumerate(signals, 1):
+        fd = s.get('filter_details', {})
+        print(f"\n  [{i}] {s['code']} {s['signal_type']} ¥{s['entry_price']:.2f}")
+        print(f"      攻击日{fd.get('攻击日','?')} | 窗口{fd.get('窗口','?')} | 缩量{fd.get('缩量','?')} | 角{fd.get('角度','?')}")
+        print(f"      MA20{fd.get('MA20','?')} | 偏离{fd.get('偏离','?')} | 支撑{fd.get('支撑','?')} | 日跌{fd.get('日跌','?')}")
+        print(f"      [QClaw: 请用NeoData补充该股所属板块、板块资金方向、市场整体环境]" if i == 1 else "")
 
 
 def save_signals(signals):
