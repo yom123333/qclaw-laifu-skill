@@ -116,9 +116,7 @@ def check_positions(verbose=True):
     today = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     if not active:
-        if verbose:
-            print(f"[{today}] 无活跃持仓")
-        return []
+        return []  # Silent when no positions
 
     triggered = []
 
@@ -161,18 +159,17 @@ def check_positions(verbose=True):
         save_alerts(alerts)
 
     if verbose:
-        print(f"[{today}] 检查 {len(active)} 个持仓")
-        for pos in active:
-            pnl = (pos['highest_close'] / pos['entry_price'] - 1) * 100
-            status = "✅" if pnl > 0 else "⚠️" if pnl > -5 else "🔴"
-            print(f"  {status} {pos['code']} | 入场¥{pos['entry_price']:.2f} | "
-                  f"浮{'盈' if pnl>=0 else '亏'}{abs(pnl):.1f}% | 持{pos['hold_days']}天")
+        # Silent when no triggers. Only output when something triggered.
+        if triggered:
+            print(f"[{today}] 检查 {len(active)} 个持仓")
+            for pos in active:
+                pnl = (pos['highest_close'] / pos['entry_price'] - 1) * 100
+                status = "OK" if pnl > 0 else "WARN" if pnl > -5 else "RISK"
+                print(f"  {status} {pos['code']} | {pos['entry_price']:.2f} | {pnl:+.1f}% | D+{pos['hold_days']}")
 
-        for t in triggered:
-            print(f"\n🚨 出场触发!")
-            print(f"  代码: {t['code']}")
-            print(f"  入场: ¥{t['entry_price']} → 出场: ¥{t['exit_price']}")
-            print(f"  收益: {t['return_pct']:+.1f}% | 原因: {t['reason']}")
+            for t in triggered:
+                print(f"\nEXIT! {t['code']} {t['reason']}")
+                print(f"  {t['entry_price']} -> {t['exit_price']} | {t['return_pct']:+.1f}%")
 
     return triggered
 

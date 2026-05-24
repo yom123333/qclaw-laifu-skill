@@ -265,8 +265,8 @@ def run_all_checks():
             print(f"  · {a['type']}: {a['detail']}")
 
     if not all_alerts:
-        print(f"\n✅ 当前无异常风险")
-        print("  市场处于正常波动区间，策略按标准参数运行")
+        # Silent mode: no output when everything is normal
+        pass
 
     print(f"\n{'━'*45}")
     print(f"下次检查: {now + timedelta(minutes=3)} (3分钟后)")
