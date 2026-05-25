@@ -135,12 +135,23 @@ def check_positions(verbose=True):
 
     for pos in active:
         code = pos['code']
+        entry_price = pos.get('entry_price', 0)
 
-        # Try to get current price from iwencai (fallback to simulated)
+        # Skip positions with bad data
+        if entry_price <= 0 or entry_price > 10000:
+            if verbose:
+                print(f"  SKIP {code}: invalid entry_price={entry_price}")
+            continue
+
+        # Try to get current price from iwencai
         current_price = _fetch_price(code)
 
-        if current_price is None:
+        if current_price is None or current_price <= 0:
             continue
+
+        # Sanity check: reject obviously wrong prices
+        if abs(current_price - entry_price) / entry_price > 0.5:
+            continue  # >50% change is data error, not real
 
         # Update hold days
         pos['hold_days'] = pos.get('hold_days', 0) + 1
@@ -179,9 +190,11 @@ def check_positions(verbose=True):
         if triggered:
             print(f"[{today}] 检查 {len(active)} 个持仓")
             for pos in active:
-                pnl = (pos['highest_close'] / pos['entry_price'] - 1) * 100
+                ep = pos.get('entry_price', 0)
+                if ep <= 0: continue
+                pnl = (pos['highest_close'] / ep - 1) * 100
                 status = "OK" if pnl > 0 else "WARN" if pnl > -5 else "RISK"
-                print(f"  {status} {pos['code']} | {pos['entry_price']:.2f} | {pnl:+.1f}% | D+{pos['hold_days']}")
+                print(f"  {status} {pos['code']} | {ep:.2f} | {pnl:+.1f}% | D+{pos['hold_days']}")
 
             for t in triggered:
                 print(f"\n🚨 出场触发! {t['code']}")

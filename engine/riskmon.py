@@ -277,6 +277,10 @@ def run_all_checks():
 def check_premarket():
     """盘前简报：隔夜美股+今日日历+预期"""
     now = datetime.now()
+    # Time window guard: only run before 12:00
+    if now.hour >= 12:
+        print("[SKIP] 盘前简报仅上午执行，当前已过12:00")
+        return
     cal = check_calendar_risks()
     weekday = ['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]
 

@@ -74,7 +74,44 @@ def _check_entry(df, idx, attack_idx, params, market_score=60):
     return True
 
 
-def scan_all(quick=False):
+def _fetch_today_prices(codes, max_codes=300):
+    """从i问财批量抓今日实时价格"""
+    import requests
+    import re
+    prices = {}
+    # Batch query: iwencai supports up to ~50 codes per query
+    batch_size = 30
+    for i in range(0, min(len(codes), max_codes), batch_size):
+        batch = codes[i:i+batch_size]
+        query = '+'.join(batch) + '+现价+涨跌幅+成交量+成交额'
+        try:
+            url = f"https://www.iwencai.com/stockpick/search?w={query}"
+            r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            r.encoding = 'utf-8'
+            html = r.text
+            for code in batch:
+                # Extract price near the code mention
+                idx = html.find(code)
+                if idx < 0: continue
+                snippet = html[idx:idx+500]
+                nums = re.findall(r'[-+]?\d+\.?\d*', snippet)
+                if len(nums) >= 3:
+                    prices[code] = {
+                        'close': float(nums[0]) if float(nums[0]) > 1 else float(nums[1]) if len(nums) > 1 else 0,
+                        'volume': float(nums[-1]) if nums[-1].isdigit() else 0,
+                    }
+                    # Better: find percentage change nearby
+                    pct_match = re.search(r'([-+]\d+\.?\d*)%', snippet)
+                    if pct_match:
+                        pct = float(pct_match.group(1))
+                        if prices[code]['close'] > 0 and abs(pct) < 20:
+                            prices[code]['prev_close'] = prices[code]['close'] / (1 + pct/100)
+        except Exception:
+            pass
+    return prices
+
+
+def scan_all(quick=False, live=False):
     """全市场信号扫描"""
     cfg = load_config()
     params = cfg.get('strategy', {}).get('longhui', {})
@@ -125,6 +162,13 @@ def scan_all(quick=False):
     print(f"📡 扫描 {len(codes)} 只股票...")
     signals = []
     today = datetime.now()
+    today_str = today.strftime('%Y-%m-%d')
+
+    # Fetch today's live prices if requested
+    live_prices = {}
+    if live:
+        print(f"  获取今日实时价格...")
+        live_prices = _fetch_today_prices(codes)
 
     for i, code in enumerate(codes):
         if (i + 1) % 500 == 0:
@@ -133,6 +177,23 @@ def scan_all(quick=False):
         df = read_stock_day(code)
         if df is None or len(df) < 30:
             continue
+
+        # If live mode and we have today's price, append today's bar
+        if live and code in live_prices:
+            lp = live_prices[code]
+            if lp.get('close', 0) > 0:
+                last_date = df['date'].iloc[-1]
+                new_row = {
+                    'date': pd.Timestamp(today_str),
+                    'close': lp['close'],
+                    'open': lp.get('prev_close', lp['close']),
+                    'high': lp['close'],
+                    'low': lp['close'],
+                    'volume': lp.get('volume', df['volume'].iloc[-1]),
+                    'amount': lp['close'] * lp.get('volume', 1000000),
+                    'code': code,
+                }
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
         # Check last few days for signals
         last_idx = len(df) - 1
@@ -272,10 +333,11 @@ def main():
     parser.add_argument('--check', help='检查特定股票代码')
     parser.add_argument('--history', type=int, default=30, help='查看历史信号天数')
     parser.add_argument('--by-sector', action='store_true', help='按板块分组（需联网）')
+    parser.add_argument('--live', action='store_true', help='使用今日实时价格（非vipdoc历史）')
     args = parser.parse_args()
 
     if args.scan or args.today:
-        signals = scan_all(quick=args.quick)
+        signals = scan_all(quick=args.quick, live=args.live)
         all_signals = save_signals(signals)
         print_signal_report(signals)
 
